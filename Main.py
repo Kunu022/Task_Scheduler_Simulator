@@ -36,6 +36,7 @@ class Task:
             return False
         if current_time + self.time > self.expDate:
             return True
+   
 
 class TaskQueue:
     def __init__(self):
@@ -234,6 +235,37 @@ class TaskQueue:
         return order, aborted, current_time
 
 
+def show_tasks(self):
+
+        print("\n task list")
+
+        tasks = sorted(
+            self.tasks.values(),
+            key=lambda task: task.effective_priority()
+        )
+
+        for task in tasks:
+            print("______________________")
+            print("Name:", task.name)
+            print("Priority:", task.priority)
+            print("Status:", task.Mode)
+            print("Execution Time:", task.time)
+#search for a task by it's name
+def search_task(self,name):
+    found = false
+    for task in self.tasks.values(): 
+        if task.name.lower() == name.lower():
+            print("\n task found")
+            print("id:", task.name)
+            print("priority:", task.priority)
+            print("execution time:", task.time)
+            print("expiration:", task.expDate)
+            print("status:", task.mode)
+            print("dependencies:", task.deps)
+            found = True
+    if not found:
+        print("task not found")
+            
 
 q = TaskQueue()
 
@@ -250,6 +282,10 @@ q.deps_score()
 q.priority_boost()
 
 order, aborted, total_time = q.execution_order()
+
+print("\nSearch example")
+q.search_task("cleanlogs")
+q.show_tasks
 
 print(f"\nCompleted: {[q.tasks[tid].name for tid in order]}")
 print(f"Aborted: {[q.tasks[tid].name for tid in aborted]}")
