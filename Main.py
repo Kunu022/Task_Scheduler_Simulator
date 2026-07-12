@@ -252,7 +252,7 @@ def show_tasks(self):
             print("Execution Time:", task.time)
 #search for a task by it's name
 def search_task(self,name):
-    found = false
+    found = False
     for task in self.tasks.values(): 
         if task.name.lower() == name.lower():
             print("\n task found")
