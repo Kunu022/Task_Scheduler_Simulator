@@ -1,3 +1,4 @@
+import pandas as fardin
 import heapq
 from itertools import count
 
@@ -88,10 +89,22 @@ class TaskQueue:
             if task and task.Mode not in [TaskMode.BLOCKED, TaskMode.FAILED]:
                 if effected == taskID:
                     task.mode = TaskMode.FAILED
+                    task.history.append(
+                        {
+                            "time": current_time,
+                            "event": "FAILED"
+                        }
+                    )
                     task.add_history(TaskMode.FAILED,current_time)
 
                 else:
                     task.mode = TaskMode.BLOCKED
+                    task.history.append(
+                        {
+                            "time": current_time,
+                            "event": "BLOCKED"
+                        }
+                    )
                     task.add_history(TaskMode.BLOCKED,current_time)
                 blocked.append(effected)
 
@@ -215,11 +228,23 @@ class TaskQueue:
 
             # Execute the task
             task.Mode = TaskMode.EXECUTING
+            task.history.append(
+                {
+                    "time": current_time,
+                    "event": "EXECUTING"
+                }
+            )
             task.add_history(TaskMode.EXECUTING,current_time)
             task.start_time = current_time
             current_time += task.time
             task.end_time = current_time
             task.Mode = TaskMode.COMPLETE
+            task.history.append(
+                {
+                    "time": current_time,
+                    "event": "COMPLETE"
+                }
+            )
             task.add_history(TaskMode.COMPLETE,current_time)
             order.append(task.taskID)
 
@@ -283,7 +308,7 @@ class TaskQueue:
             )
     
 
-q = TaskQueue()
+'''q = TaskQueue()
 
 # Task with tight deadline that can't be met
 a = Task(1, "UrgentReport", [], time=5, expDate=3)  # Needs 5 time units, due in 3
@@ -293,7 +318,43 @@ d = Task(3, "SendEmail", [b.taskID], time=1)  # Depends on failed chain
 
 for t in [a, b, c, d]:
     q.add(t)
+'''
+q = TaskQueue()
+data = fardin.read_excel("tasks.xlsx")
 
+
+print(data)
+q = TaskQueue()
+
+task_objects = {}
+
+for _, row in data.iterrows():
+
+    deps = []
+
+    task = Task(
+        row["priority"],
+        row["name"],
+        deps,
+        row["time"],
+        row["expDate"]
+    )
+
+    task_objects[row["name"]] = task
+    q.add(task)
+for _, row in data.iterrows():
+
+    dep_name = row["deps"]
+
+    if str(dep_name) != "nan":
+
+        current_task = task_objects[row["name"]]
+
+        dependency_task = task_objects[dep_name]
+
+        current_task.deps.append(
+            dependency_task.taskID
+        )
 q.deps_score()
 q.priority_boost()
 
@@ -304,6 +365,7 @@ print(f"\nCompleted: {[q.tasks[tid].name for tid in order]}")
 print(f"Aborted: {[q.tasks[tid].name for tid in aborted]}")
 print(f"Total time: {total_time}")
 print("\n========== HISTORY ==========")
+print(q.tasks)
 for taskID in q.tasks:
 
     q.show_history(taskID)
