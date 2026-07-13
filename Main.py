@@ -385,3 +385,4 @@ print(len(gui.tasks_table))
 
 order, aborted, total_time = gui.run_simulation()
 
+
