@@ -3,7 +3,11 @@ import heapq
 from itertools import count
 
 ID_COUNTER = count()
-#different states a task can be in
+def reset_counter():
+    global ID_COUNTER
+    ID_COUNTER = count()
+
+# different states a task can be in
 class TaskMode:
     DELETED = "DELETED"
     COMPLETE = "COMPLETE"
@@ -12,9 +16,9 @@ class TaskMode:
     EXECUTING = "EXECUTING"
     WAITING = "WAITING"
     READY = "READY"
-class Task:
-    def __init__(self, priority, name ,deps, time = 0, expDate = -1 ):
 
+class Task:
+    def __init__(self, priority, name, deps, time=0, expDate=-1):
         self.taskID = next(ID_COUNTER)
         self.priority = priority
         self.name = name
@@ -24,39 +28,28 @@ class Task:
         self.depsScore = 0
         self.tempPriority = 0
         self.Mode = TaskMode.WAITING
-        self.history=[]
-        self.history = [
+        self.history = [{
+            "time": 0,
+            "event": "CREATED"
+        }]
 
-            {
-                "time": 0,
-                "event": "CREATED"
-            }]
-
-
-       
-    # finding the correct priority for a task
     def effective_priority(self):
         if self.tempPriority > 0:
             return min(self.priority, self.tempPriority)
         return self.priority
 
-    #checks if the task will miss its expiration date even if it is executed right now
-    def expDate_miss(self,current_time):
-        if self.expDate < 0 :
+    def expDate_miss(self, current_time):
+        if self.expDate < 0:
             return False
         if current_time + self.time > self.expDate:
             return True
         return False
-   
-   #every task has a diary book !! 
+
     def add_history(self, event, current_time):
-
-        self.history.append(
-
-            {
-                "time": current_time,
-                "event": event
-            })
+        self.history.append({
+            "time": current_time,
+            "event": event
+        })
 
 class TaskQueue:
     def __init__(self):
@@ -66,8 +59,7 @@ class TaskQueue:
         self.heap = []
         self.failed = []
 
-    #find all the tasks that depend on a task
-    def find_all_dependents(self, taskID, visited = None):
+    def find_all_dependents(self, taskID, visited=None):
         if visited is None:
             visited = set()
         if taskID in visited:
@@ -77,9 +69,8 @@ class TaskQueue:
         for temp in self.tasks.values():
             if taskID in temp.deps:
                 self.find_all_dependents(temp.taskID, visited)
-
         return visited
-    #will fail any task that failed along with the tasks that depend on it
+
     def fail_failed_tasks(self, taskID, current_time):
         proxy_fail = self.find_all_dependents(taskID)
 
@@ -88,24 +79,11 @@ class TaskQueue:
             task = self.tasks.get(effected)
             if task and task.Mode not in [TaskMode.BLOCKED, TaskMode.FAILED]:
                 if effected == taskID:
-                    task.mode = TaskMode.FAILED
-                    task.history.append(
-                        {
-                            "time": current_time,
-                            "event": "FAILED"
-                        }
-                    )
-                    task.add_history(TaskMode.FAILED,current_time)
-
+                    task.Mode = TaskMode.FAILED          # fixed: was task.mode
+                    task.add_history(TaskMode.FAILED, current_time)  # removed raw append
                 else:
-                    task.mode = TaskMode.BLOCKED
-                    task.history.append(
-                        {
-                            "time": current_time,
-                            "event": "BLOCKED"
-                        }
-                    )
-                    task.add_history(TaskMode.BLOCKED,current_time)
+                    task.Mode = TaskMode.BLOCKED         # fixed: was task.mode
+                    task.add_history(TaskMode.BLOCKED, current_time) # removed raw append
                 blocked.append(effected)
 
                 if effected in self.find:
@@ -114,33 +92,31 @@ class TaskQueue:
 
         self.failed.append(blocked)
         return blocked
-    #checks all the tasks in the queue and the one running to see if they will miss their deadline or not
+
     def check_expDates(self, current_time):
+        
         failed = []
         for task in self.tasks.values():
+            
             if task.Mode in [TaskMode.WAITING, TaskMode.EXECUTING]:
                 if task.expDate_miss(current_time):
-                    blocked = self.fail_failed_tasks(task.taskID,current_time)
+                    print(task.name, "MISSED DEADLINE!")
+                    blocked = self.fail_failed_tasks(task.taskID, current_time)
                     failed.append(blocked)
-
         return failed
 
-    # add a task to the queue
     def add(self, task):
         self.tasks[task.taskID] = task
-        #making it a list to be able to change it later for deletion
         entry = [task.effective_priority(), task.depsScore, next(self.counter), task.taskID, task]
         self.find[task.taskID] = entry
         heapq.heappush(self.heap, entry)
 
-    # update task info by marking the old task as "Deleted" and
-    # putting a new ones in the heap with the updated values
-    def update_task(self, taskID, priorityNew = None, depsScoreNew = None):
+    def update_task(self, taskID, priorityNew=None, depsScoreNew=None):
         if taskID not in self.tasks:
             return
 
         task = self.tasks[taskID]
-        old = self.find.pop(taskID,None)
+        old = self.find.pop(taskID, None)
         if old:
             old[-1] = "Deleted"
 
@@ -151,7 +127,6 @@ class TaskQueue:
         self.find[taskID] = tempTask
         heapq.heappush(self.heap, tempTask)
 
-    # remove a task from the queue
     def remove(self, taskID):
         while self.heap:
             poppedTask = heapq.heappop(self.heap)
@@ -169,10 +144,8 @@ class TaskQueue:
                     self.tasks[d].depsScore += 1
 
         for taskID in list(self.find.keys()):
-            self.update_task(taskID, depsScoreNew = self.tasks[taskID].depsScore)
+            self.update_task(taskID, depsScoreNew=self.tasks[taskID].depsScore)
 
-
-    """ The Functions Below are AI for now Because They Will Change Later """
     def priority_boost(self):
         changed = True
         for task in self.tasks.values():
@@ -190,62 +163,59 @@ class TaskQueue:
                 if best_boost != task.tempPriority:
                     task.tempPriority = best_boost
         for taskID in list(self.tasks.keys()):
-            self.update_task(taskID, priorityNew = self.tasks[taskID].effective_priority())
+            self.update_task(taskID, priorityNew=self.tasks[taskID].effective_priority())
 
     def execution_order(self, start_time=0):
         current_time = start_time
-        in_degree = {tid: len(task.deps) for tid, task in self.tasks.items()}
-        dependents = {tid: [] for tid in self.tasks}
 
-        for tid, task in self.tasks.items():
-            for dep_id in task.deps:
-                if dep_id in dependents:
-                    dependents[dep_id].append(tid)
+        order = []
+        aborted = []
 
-        # Check initial deadlines before starting
-        self.check_expDates(current_time)
+        in_degree = {
+            tid: len(task.deps)
+            for tid, task in self.tasks.items()
+        }
 
+        dependents = {
+            tid: []
+            for tid in self.tasks
+        }
+
+        failed_now = self.check_expDates(current_time)
+        
+        for group in failed_now:
+            aborted.extend(group)
+        
+
+        
         ready = []
         for tid, task in self.tasks.items():
             if in_degree[tid] == 0 and task.Mode == TaskMode.WAITING:
                 task.Mode = TaskMode.READY
-                task.add_history(TaskMode.READY,current_time)
+                task.add_history(TaskMode.READY, current_time)
                 heapq.heappush(ready, (task.effective_priority(), -task.depsScore,
                                        next(self.counter), task))
 
         order = []
-        aborted = []
+        
 
         while ready:
             _, _, _, task = heapq.heappop(ready)
 
             # Double-check deadline right before execution
             if task.expDate_miss(current_time):
-                cascade = self.fail_failed_tasks(
-                    task.taskID,current_time)
+                cascade = self.fail_failed_tasks(task.taskID, current_time)
                 aborted.extend(cascade)
                 continue
 
             # Execute the task
             task.Mode = TaskMode.EXECUTING
-            task.history.append(
-                {
-                    "time": current_time,
-                    "event": "EXECUTING"
-                }
-            )
-            task.add_history(TaskMode.EXECUTING,current_time)
+            task.add_history(TaskMode.EXECUTING, current_time)   # removed raw append
             task.start_time = current_time
             current_time += task.time
             task.end_time = current_time
             task.Mode = TaskMode.COMPLETE
-            task.history.append(
-                {
-                    "time": current_time,
-                    "event": "COMPLETE"
-                }
-            )
-            task.add_history(TaskMode.COMPLETE,current_time)
+            task.add_history(TaskMode.COMPLETE, current_time)    # removed raw append
             order.append(task.taskID)
 
             # Check deadlines after time passes
@@ -262,12 +232,12 @@ class TaskQueue:
                     t = self.tasks[dep_tid]
 
                     # Check if this newly-ready task will miss its deadline
-                    if t.will_miss_deadline(current_time):
-                        cascade = self.fail_failed_tasks(
-                            t.taskID,current_time)
+                    if t.expDate_miss(current_time):            # fixed: was will_miss_deadline
+                        cascade = self.fail_failed_tasks(t.taskID, current_time)
                         aborted.extend(cascade)
                     else:
                         t.Mode = TaskMode.READY
+                        t.add_history(TaskMode.READY, current_time)  # added missing history
                         heapq.heappush(ready, (t.effective_priority(), -t.depsScore,
                                                next(self.counter), t))
 
@@ -284,88 +254,134 @@ class TaskQueue:
 
         return order, aborted, current_time
 
+
     def show_history(self, taskID):
-
         task = self.tasks.get(taskID)
-
         if task is None:
-
             print("Task not found.")
-
             return
 
         print("\n------------------------")
         print("History of:", task.name)
         print("------------------------")
-
         for event in task.history:
+            print("Time:", event["time"], "| Event:", event["event"])
 
-            print(
-                "Time:",
-                event["time"],
-                "| Event:",
-                event["event"]
+#Class for presentation of data to the gui
+class TaskGui:
+    def __init__(self):
+        self.tasks_table = []   # list of dicts: {priority, name, deps_list, time, expDate}
+        self.queue = None     # the TaskQueue used in the last run
+        self.results = None   # (order, aborted, total_time) from last run
+
+    def load_from_excel(self, filepath):
+        data = fardin.read_excel(filepath)
+        self.tasks_table.clear()
+        for _, row in data.iterrows():
+            deps_name = row["deps"] if str(row["deps"]) != "nan" else ""
+            self.tasks_table.append({
+                "priority": row["priority"],
+                "name": row["name"],
+                "deps_list": [deps_name] if deps_name else [],
+                "time": row["time"],
+                "expDate": row["expDate"]
+            })
+
+    def add_task(self, priority, name, deps_list, time, expDate):
+        self.tasks_table.append({
+            "priority": priority, "name": name,
+            "deps_list": deps_list, "time": time,
+            "expDate": expDate
+        })
+    def run_simulation(self):
+
+        reset_counter()
+
+        self.queue = TaskQueue()
+
+        task_objects = {}
+
+        # this is foor making the tasks :
+        for row in self.tasks_table:
+
+            task = Task(
+                priority=row["priority"],
+                name=row["name"],
+                deps=[],
+                time=row["time"],
+                expDate=row["expDate"]
             )
-    
 
-'''q = TaskQueue()
+            task_objects[row["name"]] = task
 
-# Task with tight deadline that can't be met
-a = Task(1, "UrgentReport", [], time=5, expDate=3)  # Needs 5 time units, due in 3
-b = Task(3, "BackupDB", [a.taskID], time=2)  # Depends on the failed task
-c = Task(2, "CleanLogs", [], time=1)  # Independent, will run fine
-d = Task(3, "SendEmail", [b.taskID], time=1)  # Depends on failed chain
+            self.queue.add(task)
 
-for t in [a, b, c, d]:
-    q.add(t)
-'''
-q = TaskQueue()
-data = fardin.read_excel("tasks.xlsx")
+        # now for merging the dependences :
+        for row in self.tasks_table:
 
+            current_task = task_objects[row["name"]]
 
-print(data)
-q = TaskQueue()
+            for dep_name in row["deps_list"]:
 
-task_objects = {}
+                if dep_name in task_objects:
 
-for _, row in data.iterrows():
+                    current_task.deps.append(
+                        task_objects[dep_name].taskID
+                    )
 
-    deps = []
+        # calculations before runnig the program :
+        self.queue.deps_score()
 
-    task = Task(
-        row["priority"],
-        row["name"],
-        deps,
-        row["time"],
-        row["expDate"]
-    )
+        self.queue.priority_boost()
 
-    task_objects[row["name"]] = task
-    q.add(task)
-for _, row in data.iterrows():
+        # running the simulator :
+        self.results = self.queue.execution_order()
 
-    dep_name = row["deps"]
+        return self.results
 
-    if str(dep_name) != "nan":
+    def get_info_of_tasks(self):
+        if self.queue is None:
+            return []
+        info = []
+        for task in self.queue.tasks.values():
+            info.append({
+                "id": task.taskID, "name": task.name,
+                "priority": task.priority, "deps": [dep_id for dep_id in task.deps],
+                "time": task.time, "expDate": task.expDate,
+                "status": task.Mode, "start_time": task.start_time,
+                "end_time": task.end_time
+            })
+        return info
 
-        current_task = task_objects[row["name"]]
+    def show_history(self, task_name):
+        if self.queue is None:
+            return None
+        for task in self.queue.tasks.values():
+            if task.name == task_name:
+                return task.history
+        return None
 
-        dependency_task = task_objects[dep_name]
+    def find_task_by_name(self, name):
+        for task in self.queue.tasks.values():
+            if task.name == name:
+                return task
+        return None
 
-        current_task.deps.append(
-            dependency_task.taskID
-        )
-q.deps_score()
-q.priority_boost()
+    def total_time(self):
+        if self.results:
+            return self.results[2]
+        return None
 
-order, aborted, total_time = q.execution_order()
+    def reset(self):
+        self.queue = None
+        self.results = None
 
+gui = TaskGui()
 
-print(f"\nCompleted: {[q.tasks[tid].name for tid in order]}")
-print(f"Aborted: {[q.tasks[tid].name for tid in aborted]}")
-print(f"Total time: {total_time}")
-print("\n========== HISTORY ==========")
-print(q.tasks)
-for taskID in q.tasks:
+gui.load_from_excel("tasks.xlsx")
 
-    q.show_history(taskID)
+print(gui.tasks_table)
+print(len(gui.tasks_table))
+
+order, aborted, total_time = gui.run_simulation()
+
