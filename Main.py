@@ -23,7 +23,16 @@ class Task:
         self.depsScore = 0
         self.tempPriority = 0
         self.Mode = TaskMode.WAITING
+        self.history=[]
+        self.history = [
 
+            {
+                "time": 0,
+                "event": "CREATED"
+            }]
+
+
+       
     # finding the correct priority for a task
     def effective_priority(self):
         if self.tempPriority > 0:
@@ -36,7 +45,17 @@ class Task:
             return False
         if current_time + self.time > self.expDate:
             return True
+        return False
    
+   #every task has a diary book !! 
+    def add_history(self, event, current_time):
+
+        self.history.append(
+
+            {
+                "time": current_time,
+                "event": event
+            })
 
 class TaskQueue:
     def __init__(self):
@@ -69,8 +88,11 @@ class TaskQueue:
             if task and task.Mode not in [TaskMode.BLOCKED, TaskMode.FAILED]:
                 if effected == taskID:
                     task.mode = TaskMode.FAILED
+                    task.add_history(TaskMode.FAILED,current_time)
+
                 else:
                     task.mode = TaskMode.BLOCKED
+                    task.add_history(TaskMode.BLOCKED,current_time)
                 blocked.append(effected)
 
                 if effected in self.find:
@@ -120,7 +142,7 @@ class TaskQueue:
     def remove(self, taskID):
         while self.heap:
             poppedTask = heapq.heappop(self.heap)
-            if poppedTask[-1] != "Deleted":
+            if poppedTask[-1] != "DELETED":
                 task = poppedTask[-1]
                 del self.find[taskID]
                 return task
@@ -174,6 +196,7 @@ class TaskQueue:
         for tid, task in self.tasks.items():
             if in_degree[tid] == 0 and task.Mode == TaskMode.WAITING:
                 task.Mode = TaskMode.READY
+                task.add_history(TaskMode.READY,current_time)
                 heapq.heappush(ready, (task.effective_priority(), -task.depsScore,
                                        next(self.counter), task))
 
@@ -191,11 +214,13 @@ class TaskQueue:
                 continue
 
             # Execute the task
-            task.state = TaskMode.EXECUTING
+            task.Mode = TaskMode.EXECUTING
+            task.add_history(TaskMode.EXECUTING,current_time)
             task.start_time = current_time
             current_time += task.time
             task.end_time = current_time
-            task.state = TaskMode.COMPLETE
+            task.Mode = TaskMode.COMPLETE
+            task.add_history(TaskMode.COMPLETE,current_time)
             order.append(task.taskID)
 
             # Check deadlines after time passes
@@ -204,7 +229,7 @@ class TaskQueue:
             # Update dependents
             for dep_tid in dependents[task.taskID]:
                 # Skip blocked/failed dependents
-                if self.tasks[dep_tid].state in [TaskMode.BLOCKED, TaskMode.FAILED]:
+                if self.tasks[dep_tid].Mode in [TaskMode.BLOCKED, TaskMode.FAILED]:
                     continue
 
                 in_degree[dep_tid] -= 1
@@ -217,7 +242,7 @@ class TaskQueue:
                             t.taskID,current_time)
                         aborted.extend(cascade)
                     else:
-                        t.state = TaskMode.READY
+                        t.Mode = TaskMode.READY
                         heapq.heappush(ready, (t.effective_priority(), -t.depsScore,
                                                next(self.counter), t))
 
@@ -234,38 +259,29 @@ class TaskQueue:
 
         return order, aborted, current_time
 
+    def show_history(self, taskID):
 
-def show_tasks(self):
+        task = self.tasks.get(taskID)
 
-        print("\n task list")
+        if task is None:
 
-        tasks = sorted(
-            self.tasks.values(),
-            key=lambda task: task.effective_priority()
-        )
+            print("Task not found.")
 
-        for task in tasks:
-            print("______________________")
-            print("Name:", task.name)
-            print("Priority:", task.priority)
-            print("Status:", task.Mode)
-            print("Execution Time:", task.time)
-#search for a task by it's name
-def search_task(self,name):
-    found = False
-    for task in self.tasks.values(): 
-        if task.name.lower() == name.lower():
-            print("\n task found")
-            print("id:", task.name)
-            print("priority:", task.priority)
-            print("execution time:", task.time)
-            print("expiration:", task.expDate)
-            print("status:", task.mode)
-            print("dependencies:", task.deps)
-            found = True
-    if not found:
-        print("task not found")
-            
+            return
+
+        print("\n------------------------")
+        print("History of:", task.name)
+        print("------------------------")
+
+        for event in task.history:
+
+            print(
+                "Time:",
+                event["time"],
+                "| Event:",
+                event["event"]
+            )
+    
 
 q = TaskQueue()
 
@@ -283,10 +299,11 @@ q.priority_boost()
 
 order, aborted, total_time = q.execution_order()
 
-print("\nSearch example")
-q.search_task("cleanlogs")
-q.show_tasks
 
 print(f"\nCompleted: {[q.tasks[tid].name for tid in order]}")
 print(f"Aborted: {[q.tasks[tid].name for tid in aborted]}")
 print(f"Total time: {total_time}")
+print("\n========== HISTORY ==========")
+for taskID in q.tasks:
+
+    q.show_history(taskID)
