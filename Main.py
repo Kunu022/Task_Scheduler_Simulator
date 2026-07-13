@@ -1,3 +1,19 @@
+
+"""
+Task Scheduler Simulator.
+
+The task_scheduler module provides classes and functions for
+creating tasks, managing dependencies, simulating execution,
+and analyzing scheduling behavior.
+
+Tasks can be loaded from an Excel file and executed according
+to their priorities, dependencies, and expiration dates.
+
+The scheduler supports task history tracking, deadline checking,
+priority boosting, and failure propagation.
+"""
+
+
 import pandas as fardin
 import heapq
 from itertools import count
@@ -18,7 +34,17 @@ class TaskMode:
     READY = "READY"
 
 class Task:
+    """
+    Represents a task in the scheduler.
+
+    A task stores its priority, dependencies, execution time,
+    expiration date, current state, and execution history.
+    """
+
     def __init__(self, priority, name, deps, time=0, expDate=-1):
+        """
+        Construct a new task.
+        """
         self.taskID = next(ID_COUNTER)
         self.priority = priority
         self.name = name
@@ -34,11 +60,21 @@ class Task:
         }]
 
     def effective_priority(self):
+        """
+        Return the effective priority of the task.
+
+        If a temporary priority boost exists, use it.
+        Otherwise return the original priority.
+        """    
         if self.tempPriority > 0:
             return min(self.priority, self.tempPriority)
         return self.priority
 
     def expDate_miss(self, current_time):
+        """
+        Return True if the task cannot meet its deadline,
+        even if execution starts immediately.
+        """
         if self.expDate < 0:
             return False
         if current_time + self.time > self.expDate:
@@ -46,12 +82,24 @@ class Task:
         return False
 
     def add_history(self, event, current_time):
+        """
+        Add an event to the task history.
+        """
         self.history.append({
             "time": current_time,
             "event": event
         })
 
+#================
+# Task queue
+#================
 class TaskQueue:
+    """
+    Represents the scheduler queue.
+
+    Responsible for storing tasks, maintaining priorities,
+    resolving dependencies, and executing simulations.
+    """
     def __init__(self):
         self.tasks = {}
         self.find = {}
@@ -60,6 +108,10 @@ class TaskQueue:
         self.failed = []
 
     def find_all_dependents(self, taskID, visited=None):
+        """
+        Return all tasks that directly or indirectly depend
+        on the specified task.
+        """
         if visited is None:
             visited = set()
         if taskID in visited:
@@ -72,6 +124,9 @@ class TaskQueue:
         return visited
 
     def fail_failed_tasks(self, taskID, current_time):
+        """
+        Mark a task as failed and block all dependent tasks.
+        """
         proxy_fail = self.find_all_dependents(taskID)
 
         blocked = []
@@ -94,6 +149,10 @@ class TaskQueue:
         return blocked
 
     def check_expDates(self, current_time):
+        """
+        Check all tasks and fail those that miss their
+        expiration date.
+        """
         
         failed = []
         for task in self.tasks.values():
@@ -106,12 +165,18 @@ class TaskQueue:
         return failed
 
     def add(self, task):
+        """
+        Add a task to the priority queue.
+        """
         self.tasks[task.taskID] = task
         entry = [task.effective_priority(), task.depsScore, next(self.counter), task.taskID, task]
         self.find[task.taskID] = entry
         heapq.heappush(self.heap, entry)
 
     def update_task(self, taskID, priorityNew=None, depsScoreNew=None):
+        """
+        Update a task entry inside the heap.
+        """
         if taskID not in self.tasks:
             return
 
@@ -128,6 +193,9 @@ class TaskQueue:
         heapq.heappush(self.heap, tempTask)
 
     def remove(self, taskID):
+        """
+        Remove and return a task from the queue.
+        """
         while self.heap:
             poppedTask = heapq.heappop(self.heap)
             if poppedTask[-1] != "DELETED":
@@ -136,6 +204,11 @@ class TaskQueue:
                 return task
 
     def deps_score(self):
+        """
+        Compute the dependency score of all tasks.
+
+        Tasks with more dependents receive a higher score.
+        """
         for task in self.tasks.values():
             task.depsScore = 0
         for task in self.tasks.values():
@@ -147,6 +220,10 @@ class TaskQueue:
             self.update_task(taskID, depsScoreNew=self.tasks[taskID].depsScore)
 
     def priority_boost(self):
+        """
+        Temporarily boost the priority of tasks whose
+        dependents have higher priority.
+        """
         changed = True
         for task in self.tasks.values():
             task.tempPriority = 0
@@ -166,6 +243,15 @@ class TaskQueue:
             self.update_task(taskID, priorityNew=self.tasks[taskID].effective_priority())
 
     def execution_order(self, start_time=0):
+        """
+        Simulate task execution.
+
+        Execute tasks according to priority and dependency
+        constraints while checking deadlines.
+
+        Return the execution order, failed tasks,
+        and total execution time.
+        """
         current_time = start_time
 
         order = []
@@ -180,6 +266,10 @@ class TaskQueue:
             tid: []
             for tid in self.tasks
         }
+        for tid,task in self.tasks.items():
+            for dep_id in task.deps:
+                if dep_id in dependents:
+                    dependents[dep_id].append(tid)
 
         failed_now = self.check_expDates(current_time)
         
@@ -256,6 +346,9 @@ class TaskQueue:
 
 
     def show_history(self, taskID):
+        """
+        Display the history of a task.
+        """
         task = self.tasks.get(taskID)
         if task is None:
             print("Task not found.")
@@ -267,13 +360,20 @@ class TaskQueue:
         for event in task.history:
             print("Time:", event["time"], "| Event:", event["event"])
 
+
+#========================
+# Simulation interface
 #Class for presentation of data to the gui
+#========================
 class TaskGui:
+    
     def __init__(self):
         self.tasks_table = []   # list of dicts: {priority, name, deps_list, time, expDate}
         self.queue = None     # the TaskQueue used in the last run
         self.results = None   # (order, aborted, total_time) from last run
 
+    
+    # Read tasks from Excel file.
     def load_from_excel(self, filepath):
         data = fardin.read_excel(filepath)
         self.tasks_table.clear()
@@ -287,6 +387,7 @@ class TaskGui:
                 "expDate": row["expDate"]
             })
 
+    # Create tasks and resolve dependencies.
     def add_task(self, priority, name, deps_list, time, expDate):
         self.tasks_table.append({
             "priority": priority, "name": name,
@@ -294,6 +395,9 @@ class TaskGui:
             "expDate": expDate
         })
     def run_simulation(self):
+        """
+        Build a fresh queue and execute a simulation.
+        """
 
         reset_counter()
 
@@ -301,7 +405,7 @@ class TaskGui:
 
         task_objects = {}
 
-        # this is foor making the tasks :
+        # this is for making the tasks :
         for row in self.tasks_table:
 
             task = Task(
@@ -376,6 +480,7 @@ class TaskGui:
         self.queue = None
         self.results = None
 
+# For testing
 gui = TaskGui()
 
 gui.load_from_excel("tasks.xlsx")
