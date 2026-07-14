@@ -5,7 +5,7 @@ The task_scheduler module provides classes and functions for
 creating tasks, managing dependencies, simulating execution,
 and analyzing scheduling behavior.
 
-Tasks can be loaded from an Excel file and executed according
+Tasks can be loaded from an Excel file and done according
 to their priorities, dependencies, and expiration dates.
 
 The scheduler supports task history tracking, deadline checking,
@@ -410,6 +410,12 @@ class TaskGui:
         # running the simulator :
         self.results = self.queue.execution_order()
         return self.results
+    def sort_done_tasks(self,tasks):
+        start_times = tasks['start_time']
+        if start_times is None:
+            return 1, float('inf'), tasks['id']
+        else:
+            return 0, start_times, tasks['id']
 
     def get_info_of_tasks(self):
         if self.queue is None:
@@ -423,6 +429,17 @@ class TaskGui:
                 "status": task.Mode, "start_time": task.start_time,
                 "end_time": task.end_time
             })
+        # sort the tasks based on start time to show the execution order
+        done = []
+        failed = []
+        for temp in info:
+            if temp['start_time'] is not None:
+                done.append(temp)
+            else:
+                failed.append(temp)
+
+        done.sort(key = self.sort_done_tasks)
+        info[:] = done + failed
         return info
 
     def show_history(self, task_name):
