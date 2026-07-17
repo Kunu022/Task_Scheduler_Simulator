@@ -137,15 +137,17 @@ class TaskQueue:
         """
         proxy_fail = self.find_all_dependents(taskID)
         blocked = []
+        failed = self.tasks.get(taskID)
         for effected in proxy_fail:
             task = self.tasks.get(effected)
             if task and task.Mode not in [TaskMode.BLOCKED, TaskMode.FAILED]:
                 if effected == taskID:
-                    task.Mode = TaskMode.FAILED  # fixed: was task.mode
-                    task.add_history(TaskMode.FAILED, current_time)  # removed raw append
+                    task.Mode = TaskMode.FAILED
+                    task.add_history(TaskMode.FAILED, current_time)
                 else:
-                    task.Mode = TaskMode.BLOCKED  # fixed: was task.mode
-                    task.add_history(TaskMode.BLOCKED, current_time)  # removed raw append
+                    task.Mode = TaskMode.BLOCKED
+                    grouped = (TaskMode.BLOCKED,f" blocked due to \"{failed.name}\" failing")
+                    task.add_history(grouped, current_time)
                 blocked.append(effected)
 
                 if effected in self.find:
@@ -273,8 +275,8 @@ class TaskQueue:
             for dep_id in task.deps:
                 if dep_id in dependents:
                     dependents[dep_id].append(tid)
-        failed_now = self.check_expDates(current_time)
 
+        failed_now = self.check_expDates(current_time)
         for group in failed_now:
             aborted.extend(group)
 
@@ -291,7 +293,7 @@ class TaskQueue:
         while ready:
             _, _, _, task = heapq.heappop(ready)
 
-            # Double-check deadline right before execution
+            # Double check deadline right before execution
             if task.expDate_miss(current_time):
                 cascade = self.fail_failed_tasks(task.taskID, current_time)
                 aborted.extend(cascade)
@@ -299,44 +301,34 @@ class TaskQueue:
 
             # Execute the task
             task.Mode = TaskMode.EXECUTING
-            task.add_history(TaskMode.EXECUTING, current_time)  # removed raw append
+            task.add_history(TaskMode.EXECUTING, current_time)
             task.start_time = current_time
             current_time += task.time
             task.end_time = current_time
             task.Mode = TaskMode.COMPLETE
-            task.add_history(TaskMode.COMPLETE, current_time)  # removed raw append
+            task.add_history(TaskMode.COMPLETE, current_time)
             order.append(task.taskID)
-            # Check deadlines after time passes
+            #Check deadlines after time passes
             self.check_expDates(current_time)
 
-            # Update dependents
+            #Update dependents
             for dep_tid in dependents[task.taskID]:
-                # Skip blocked/failed dependents
+                #skip blocked/failed dependents
                 if self.tasks[dep_tid].Mode in [TaskMode.BLOCKED, TaskMode.FAILED]:
                     continue
                 in_degree[dep_tid] -= 1
                 if in_degree[dep_tid] == 0:
                     t = self.tasks[dep_tid]
-                    # Check if this newly-ready task will miss its deadline
-                    if t.expDate_miss(current_time):  # fixed: was will_miss_deadline
+                    # Check if this task will miss its deadline
+                    if t.expDate_miss(current_time):
                         cascade = self.fail_failed_tasks(t.taskID, current_time)
                         aborted.extend(cascade)
                     else:
                         t.Mode = TaskMode.READY
-                        t.add_history(TaskMode.READY, current_time)  # added missing history
+                        t.add_history(TaskMode.READY, current_time)
                         heapq.heappush(ready, (t.effective_priority(), -t.depsScore,
                                                next(self.counter), t))
 
-        # Report results
-        print(f"\nExecution Results")
-        print(f"Completed: {len(order)} tasks")
-        print(f"Failed/Blocked: {len(aborted)} tasks")
-
-        if aborted:
-            print("\nFailed tasks:")
-            for tid in aborted:
-                task = self.tasks[tid]
-                print(f"  {task.name} (ID {tid})")
 
         return order, aborted, current_time
 
@@ -349,11 +341,14 @@ class TaskGui:
 
     def __init__(self):
         self.tasks_table = []  # list of dicts: {priority, name, deps_list, time, expDate}
-        self.queue = None  # the TaskQueue used in the last run
-        self.results = None  # (order, aborted, total_time) from last run
+        self.queue = None
+        self.results = None
 
-    # Read tasks from Excel file.
+    #read tasks from Excel file.
     def load_from_excel(self, filepath):
+        """
+        Load tasks from excel file
+        """
         data = fardin.read_excel(filepath)
         self.tasks_table.clear()
         for _, row in data.iterrows():
@@ -366,8 +361,11 @@ class TaskGui:
                 "expDate": row["expDate"]
             })
 
-    # Create tasks and resolve dependencies.
+    #create tasks and resolve dependencies.
     def add_task(self, priority, name, deps_list, time, expDate):
+        """
+        Manually add a task
+        """
         self.tasks_table.append({
             "priority": priority, "name": name,
             "deps_list": deps_list, "time": time,
@@ -382,7 +380,6 @@ class TaskGui:
         self.queue = TaskQueue()
         task_objects = {}
         # this is foor making the tasks :
-        # this is for making the tasks :
         for row in self.tasks_table:
             task = Task(
                 priority=row["priority"],
@@ -410,7 +407,11 @@ class TaskGui:
         # running the simulator :
         self.results = self.queue.execution_order()
         return self.results
+
     def sort_done_tasks(self,tasks):
+        """
+        Sorts the tasks based on start time to show execution order
+        """
         start_times = tasks['start_time']
         if start_times is None:
             return 1, float('inf'), tasks['id']
@@ -418,6 +419,9 @@ class TaskGui:
             return 0, start_times, tasks['id']
 
     def get_info_of_tasks(self):
+        """
+        Gets information about the tasks
+        """
         if self.queue is None:
             return []
         info = []
@@ -443,6 +447,9 @@ class TaskGui:
         return info
 
     def show_history(self, task_name):
+        """
+        Return the history of a task
+        """
         if self.queue is None:
             return None
         for task in self.queue.tasks.values():
@@ -451,31 +458,31 @@ class TaskGui:
         return None
 
     def find_task_by_name(self, name):
+        """
+        Finds a task object by its name value
+        """
         for task in self.queue.tasks.values():
             if task.name == name:
                 return task
         return None
 
     def total_time(self):
+        """
+        Returns the total execution time
+        """
         if self.results:
             return self.results[2]
         return None
 
     def reset(self):
+        """
+        resets the queue and the results
+        """
         self.queue = None
         self.results = None
 
 
-# For testing
-gui = TaskGui()
-
-gui.load_from_excel("tasks.xlsx")
-
-print(gui.tasks_table)
-print(len(gui.tasks_table))
-
-order, aborted, total_time = gui.run_simulation()
-
+# ------------------------------------------------------------------------
 # GUI front code
 
 import sys
@@ -488,29 +495,33 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QBrush
 
+
 class AddTask(QDialog):
+    """
+    an instance of a task in the gui
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add New Task")
         layout = QFormLayout(self)
 
-        self.name_edit = QLineEdit()
-        self.prio_spin = QSpinBox()
-        self.prio_spin.setRange(1, 99)
-        self.deps_edit = QLineEdit()
-        self.deps_edit.setPlaceholderText("separate with comma")
-        self.time_spin = QDoubleSpinBox()
-        self.time_spin.setRange(1, 9999)
-        self.exp_spin = QDoubleSpinBox()
-        self.exp_spin.setRange(-1, 9999)
-        self.exp_spin.setValue(-1)
-        self.exp_spin.setSpecialValueText("None")
+        self.name = QLineEdit()
+        self.prio = QSpinBox()
+        self.prio.setRange(1, 99)
+        self.deps = QLineEdit()
+        self.deps.setPlaceholderText("separate with comma")
+        self.time = QDoubleSpinBox()
+        self.time.setRange(1, 9999)
+        self.exp = QDoubleSpinBox()
+        self.exp.setRange(-1, 9999)
+        self.exp.setValue(-1)
+        self.exp.setSpecialValueText("None")
 
-        layout.addRow("Name:", self.name_edit)
-        layout.addRow("Priority:", self.prio_spin)
-        layout.addRow("Dependencies:", self.deps_edit)
-        layout.addRow("Execution time:", self.time_spin)
-        layout.addRow("Deadline:", self.exp_spin)
+        layout.addRow("Name:", self.name)
+        layout.addRow("Priority:", self.prio)
+        layout.addRow("Dependencies:", self.deps)
+        layout.addRow("Execution time:", self.time)
+        layout.addRow("Deadline:", self.exp)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -520,17 +531,20 @@ class AddTask(QDialog):
         layout.addRow(buttons)
 
     def get_data(self):
-        deps_text = self.deps_edit.text().strip()
+        """
+        Gets the data of a task
+        """
+        deps_text = self.deps.text().strip()
         deps_list = [d.strip() for d in deps_text.split(",") if d.strip()] if deps_text else []
         return {
-            "name": self.name_edit.text().strip(),
-            "priority": self.prio_spin.value(),
+            "name": self.name.text().strip(),
+            "priority": self.prio.value(),
             "deps_list": deps_list,
-            "time": self.time_spin.value(),
-            "expDate": self.exp_spin.value()
+            "time": self.time.value(),
+            "expDate": self.exp.value()
         }
 
-# main gui class and confoguration
+# main gui class and configuration
 class GUI(QMainWindow):
     STATUS_COLORS = {
         "COMPLETE": QColor(144, 238, 144),
@@ -579,7 +593,7 @@ class GUI(QMainWindow):
         self.history_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.history_text = QPlainTextEdit()
         self.history_text.setReadOnly(True)
-        self.history_text.setPlaceholderText("Double‑click a task to see its history")
+        self.history_text.setPlaceholderText("Double click a task to see its history")
 
         history_layout.addWidget(self.history_label)
         history_layout.addWidget(self.history_text)
@@ -611,6 +625,9 @@ class GUI(QMainWindow):
         self.statusBar().showMessage("Ready")
 
     def refresh(self):
+        """
+        updates the contents of the table
+        """
         self.table.setRowCount(0)
         tasks_info = self.backend.get_info_of_tasks()
         if not tasks_info:
@@ -654,13 +671,16 @@ class GUI(QMainWindow):
             self.table.setItem(i, 8, QTableWidgetItem(end))
 
     def display_history(self, row, col):
+        """
+        displays the history of the chosen task
+        """
         name_item = self.table.item(row, 1)
         if not name_item:
             return
         name = name_item.text()
         history = self.backend.show_history(name)
         if history is None:
-            self.history_text.setPlainText("No history available. Run the simulation first.")
+            self.history_text.setPlainText("No history available run the simulation first.")
             return
         lines = [f"History of: {name}"]
         for event in history:
@@ -683,6 +703,9 @@ class GUI(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to open Excel file:\n{str(e)}")
 
     def add_task(self):
+        """
+        add an instance of a task to the table
+        """
         dialog = AddTask(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             data = dialog.get_data()
@@ -696,6 +719,9 @@ class GUI(QMainWindow):
             self.statusBar().showMessage("Task added. Press 'Run Simulation' to execute.")
 
     def run_simulation(self):
+        """
+        runs the simulation of the task execution
+        """
         if not self.backend.tasks_table:
             QMessageBox.information(self, "Info", "No tasks to simulate.")
             return
@@ -711,8 +737,8 @@ class GUI(QMainWindow):
         self.backend.reset()
         self.refresh()
         self.history_text.clear()
-        self.history_text.setPlaceholderText("Double‑click a task to see its history")
-        self.statusBar().showMessage("Reset. Ready for new input.")
+        self.history_text.setPlaceholderText("Double click a task to see its history")
+        self.statusBar().showMessage("Reset")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -734,7 +760,7 @@ if __name__ == "__main__":
     dark_palette.setColor(dark_palette.ColorRole.Highlight, QColor(42, 130, 218))
     dark_palette.setColor(dark_palette.ColorRole.HighlightedText, Qt.GlobalColor.black)
     app.setPalette(dark_palette)
-    # Additional stylesheet for table headers etc.
+    #additional QCC for theme
     app.setStyleSheet("""
         QTableWidget { gridline-color: #555; }
         QHeaderView::section {
